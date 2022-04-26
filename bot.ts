@@ -159,11 +159,21 @@ const Connection = async () => {
                     }
                     else if(regexp.test(msg.message.conversation.toLowerCase())){
                         for (let index = 0; index < 5; index++) {
-                            SendMessage(jid, { text: `ELE MESMO`})
+                            SendMessage(jid, { text: `ELE MESMO`, templateButtons: BTNSQ})
                                 .then(result => console.log('RESULT: ', result))
                                     .catch(err => console.log('ERROR: ', err))
                             await delay(1000)
                         }
+                    }
+                    else if(msg.message.templateButtonReplyMessage.selectedId === 'botao-sim'){
+                            SendMessage(jid, { text: `MEU PAU {}`})
+                                .then(result => console.log('RESULT: ', result))
+                                    .catch(err => console.log('ERROR: ', err))
+                    }
+                    else if(msg.message.templateButtonReplyMessage.selectedId === 'botao-nao'){
+                        SendMessage(jid, { text: `MEU PAU {}`})
+                            .then(result => console.log('RESULT: ', result))
+                                .catch(err => console.log('ERROR: ', err))
                     }
                     else{
                         console.log("PASS")
