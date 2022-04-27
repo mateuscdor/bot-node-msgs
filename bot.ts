@@ -8,6 +8,21 @@ const Path = './Sessions/'
 const Auth = '_auth_info.json'
 const { get } = require("https");
 
+const express = require('express');
+const { body, validationResult } = require('express-validator');
+const app = express();
+
+const http = require('http');
+const server = http.createServer(app);
+
+const port = process.env.PORT || 8000;
+
+app.use(express.json());
+app.use(express.urlencoded({
+extended: true
+}));
+app.use("/", express.static(__dirname + "/"))
+
 
 const BTNS = [
     { index: 1, quickReplyButton: {id: 'botao-1', displayText: 'CONTINUAR'} },
@@ -25,6 +40,12 @@ const GroupCheck = (jid) => {
     const regexp = new RegExp(/^\d{18}@g.us$/)
     return regexp.test(jid)
 }
+
+const LinkMatch = (message) => {
+    const link_regexp = new RegExp(/(([a-z]+:\/\/)?(([a-z0-9\-]+\.)+([a-z]{2}|aero|arpa|biz|com|coop|edu|gov|info|int|jobs|mil|museum|name|nato|net|org|pro|travel|local|internal))(:[0-9]{1,5})?(\/[a-z0-9_\-\.~]+)*(\/([a-z0-9_\-\.]*)(\?[a-z0-9+_\-\.%=&amp;]*)?)?(#[a-zA-Z0-9!$&'()*+.=-_~:@/?]*)?)(\s+|$)/gi)
+    return link_regexp.exec(message)
+}
+
 const urlToBuffer = (url) => {
     return new Promise((resolve, reject) => {
         const data = [];
@@ -94,100 +115,175 @@ const Connection = async () => {
         return await sock.sendMessage(jid, msg)
     }
 
+    app.post('/send-text', [
+        body('number').notEmpty(),
+        body('message').notEmpty(),
+    ], async (req, res) => {
+        const errors = validationResult(req).formatWith(({
+            msg
+        }) => {
+            return msg;
+        });
+        if (!errors.isEmpty()) {
+            return res.status(422).json({
+                status: false,
+                message: errors.mapped()
+            });
+        }
+
+        const number = req.body.number;
+        const numberDDI = number.substr(0, 2);
+        const numberDDD = number.substr(2, 2);
+        const numberUser = number.substr(-8, 8);
+        const message = req.body.message;
+
+        if (numberDDI !== "55") {
+            const jid = number + "@c.us";
+            SendMessage(jid, { text: message })
+                .then(result => {
+                    console.log(`RESULT send-text: ${result}`)
+                    res.status(200).json({
+                        status: true,
+                        message: 'Mensagem enviada',
+                        response: result
+                    });
+                })
+                    .catch(err => {
+                        console.log(`ERROR send-text: ${err}`)
+                        res.status(500).json({
+                            status: false,
+                            message: 'Mensagem não enviada',
+                            response: err.text
+                        });
+                    })
+        }
+        else if (numberDDI === "55" && parseInt(numberDDD) <= 30){
+            const jid = "55" + numberDDD + "9" + numberUser + "@c.us";
+            SendMessage(jid, { text: message })
+                .then(result => {
+                    console.log(`RESULT send-text: ${result}`)
+                    res.status(200).json({
+                        status: true,
+                        message: 'Mensagem enviada',
+                        response: result
+                    });
+                })
+                    .catch(err => {
+                        console.log(`ERROR send-text: ${err}`)
+                        res.status(500).json({
+                            status: false,
+                            message: 'Mensagem não enviada',
+                            response: err.text
+                        });
+                    })
+        }
+        else if(numberDDI === "55" && parseInt(numberDDD) > 30){
+            const jid = "55" + numberDDD + numberUser + "@c.us";
+            SendMessage(jid, { text: message })
+                .then(result => {
+                    console.log(`RESULT send-text: ${result}`)
+                    res.status(200).json({
+                        status: true,
+                        message: 'Mensagem enviada',
+                        response: result
+                    });
+                })
+                    .catch(err => {
+                        console.log(`ERROR send-text: ${err}`)
+                        res.status(500).json({
+                            status: false,
+                            message: 'Mensagem não enviada',
+                            response: err.text
+                        });
+                    })
+        }
+    });
+
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         const msg = messages[0]
         const jid = msg.key.remoteJid
         const username = msg.pushName;
+        const fromMe = msg.key.fromMe
         await sock.sendReadReceipt(msg.key.remoteJid, msg.key.participant, [msg.key.id])
         const regexp = new RegExp(/meu ovo/i);
-        console.log(`participant =========== ${msg.key.participant}`)
+        // console.log(`participant =========== ${msg.key.participant}`)
+        if(msg.message.templateButtonReplyMessage){
+            if(msg.message.templateButtonReplyMessage.selectedId === 'botao-sim'){
+                SendMessage(jid, { text: `ISSO MESMO`})
+                    .then(result => console.log('RESULT: ', result))
+                        .catch(err => console.log('ERROR: ', err))
+            }
+            else if(msg.message.templateButtonReplyMessage.selectedId === 'botao-nao'){
+                SendMessage(jid, { text: `MEU PAU`})
+                    .then(result => console.log('RESULT: ', result))
+                        .catch(err => console.log('ERROR: ', err))
+            }
+        }
         
-        if(GroupCheck(jid)){
-            if(msg.message){
-                if(msg.message.conversation){
-                    if(msg.message.conversation.toLowerCase() === 'contato_teste'){
-                        const vcard = 'BEGIN:VCARD\n' + 'VERSION:3.0\n'+ 'FN:ARAGÃO MEU OVO\n' + 'ORG:Meu OVO;\n' + 'TEL;type=CELL;type=VOICE;waid=000000000000:+00 00000 00000\n' + 'END:VCARD'
-                        const contact = { 
-                            contacts: { 
-                                displayName: 'MEU OVO', 
-                                contacts: [{ vcard }] 
+        if(!msg || !msg.message || !msg.message.conversation){
+            console.log("NULO")
+        }
+        else if(!GroupCheck(jid) && !fromMe && jid !== 'status@broadcast'){
+
+        }
+        else if(GroupCheck(jid)){
+            if(msg.message.conversation.toLowerCase() === 'contato_teste'){
+                const vcard = 'BEGIN:VCARD\n' + 'VERSION:3.0\n'+ 'FN:AAAAAA MEU OVO\n' + 'ORG:Meu OVO;\n' + 'TEL;type=CELL;type=VOICE;waid=000000000000:+00 00000 00000\n' + 'END:VCARD'
+                const contact = { 
+                    contacts: { 
+                        displayName: 'MEU OVO', 
+                        contacts: [{ vcard }] 
+                    }
+                }
+                SendMessage(jid, contact)
+                    .then(result => console.log('RESULT: ', result))
+                        .catch(err => console.log('ERROR: ', err))
+            }
+            else if(msg.message.conversation.toLowerCase() === 'link_teste'){
+                const text = "qualquer coisa https://www.facebook.com"
+                const data_img = await getLinkPreview(text)
+                const image = await axios.get(data_img.images[0], {responseType: 'arraybuffer'})
+                let raw = Buffer.from(image.data, 'binary').toString('base64')
+
+                const link_text = {
+                    forward: {
+                        key: { fromMe: true },
+                        message: {
+                            extendedTextMessage: {
+                                text: text,
+                                matchedText: LinkMatch(text)[0],
+                                canonicalUrl: data_img.url,
+                                title: data_img.title,
+                                description: data_img.description,
+                                jpegThumbnail: raw //readFileSync('./assets/python.png')
                             }
                         }
-                        SendMessage(jid, contact)
-                            .then(result => console.log('RESULT: ', result))
-                                .catch(err => console.log('ERROR: ', err))
                     }
-                    else if(msg.message.conversation.toLowerCase() === 'link_teste'){
-                        const data_img = await getLinkPreview("qualquer coisa https://www.google.com")
-                        console.log(data_img)
-                        const image = await axios.get(data_img.images[0], {responseType: 'arraybuffer'})
-                        let raw = Buffer.from(image.data, 'binary').toString('base64')
-                        console.log(raw)
-                        const link_text = {
-                            forward: {
-                                key: { fromMe: true },
-                                message: {
-                                    extendedTextMessage: {
-                                        text: 'qualquer coisa https://www.google.com',
-                                        matchedText: data_img.url,
-                                        canonicalUrl: data_img.url,
-                                        title: data_img.title,
-                                        description: data_img.description,
-                                        jpegThumbnail: raw // readFileSync('./assets/python.png')
-                                    }
-                                }
-                            }
-                            // forward: {
-                            //     key: { fromMe: true },
-                            //     message: {
-                            //         extendedTextMessage: {
-                            //             text: text_msg,
-                            //             matchedText: data_img.url,
-                            //             canonicalUrl: data_img.url,
-                            //             title: data_img.title,
-                            //             description: data_img.description,
-                            //             jpegThumbnail: data_img.images[0]
-                            //         }
-                            //     }
-                            //     }
-                        }
-                        // getLinkPreview(text_msg)
-                        //     .then((data) => console.debug(`\n\n\n\nDATA ======  ${data} ======== DATA\n\n\n\n`));
-                        SendMessage(jid, link_text)
-                            .then(result => console.log('RESULT: ', result))
-                                .catch(err => console.log('ERROR: ', err))
-                    }
-                    else if(regexp.test(msg.message.conversation.toLowerCase())){
-                        for (let index = 0; index < 5; index++) {
-                            SendMessage(jid, { text: `ELE MESMO`, templateButtons: BTNSQ})
-                                .then(result => console.log('RESULT: ', result))
-                                    .catch(err => console.log('ERROR: ', err))
-                            await delay(1000)
-                        }
-                    }
-                    else if(msg.message.templateButtonReplyMessage.selectedId === 'botao-sim'){
-                            SendMessage(jid, { text: `MEU PAU {}`})
-                                .then(result => console.log('RESULT: ', result))
-                                    .catch(err => console.log('ERROR: ', err))
-                    }
-                    else if(msg.message.templateButtonReplyMessage.selectedId === 'botao-nao'){
-                        SendMessage(jid, { text: `MEU PAU {}`})
-                            .then(result => console.log('RESULT: ', result))
-                                .catch(err => console.log('ERROR: ', err))
-                    }
-                    else{
-                        console.log("PASS")
-                    }
+                }
+                // console.log(JSON.stringify(link_text))
+                SendMessage(jid, link_text)
+                    .then(result => console.log('RESULT: ', result))
+                        .catch(err => console.log('ERROR: ', err))
+            }
+            else if(regexp.test(msg.message.conversation.toLowerCase())){
+                for (let index = 0; index < 5; index++) {
+                    SendMessage(jid, { text: `ELE MESMO`, templateButtons: BTNSQ})
+                        .then(result => console.log('RESULT: ', result))
+                            .catch(err => console.log('ERROR: ', err))
+                    await delay(1000)
                 }
             }
         }
         
     })
-    sock.ev.on('messages.update', m => console.log(m))
-	sock.ev.on('message-receipt.update', m => console.log(m))
-	sock.ev.on('presence.update', m => console.log(m))
-	sock.ev.on('chats.update', m => console.log(m))
-	sock.ev.on('contacts.upsert', m => console.log(m))
+    // sock.ev.on('messages.update', m => console.log(m))
+	// sock.ev.on('message-receipt.update', m => console.log(m))
+	// sock.ev.on('presence.update', m => console.log(m))
+	// sock.ev.on('chats.update', m => console.log(m))
+	// sock.ev.on('contacts.upsert', m => console.log(m))
+    server.listen(port, function() {
+        console.log('App running on *: ' + port);
+    });
 }
 
 Connection()
