@@ -41,7 +41,7 @@ const GroupCheck = (jid) => {
     return regexp.test(jid)
 }
 
-const LinkMatch = (message) => {
+const LinkCheck = (message) => {
     const link_regexp = new RegExp(/(([a-z]+:\/\/)?(([a-z0-9\-]+\.)+([a-z]{2}|aero|arpa|biz|com|coop|edu|gov|info|int|jobs|mil|museum|name|nato|net|org|pro|travel|local|internal))(:[0-9]{1,5})?(\/[a-z0-9_\-\.~]+)*(\/([a-z0-9_\-\.]*)(\?[a-z0-9+_\-\.%=&amp;]*)?)?(#[a-zA-Z0-9!$&'()*+.=-_~:@/?]*)?)(\s+|$)/gi)
     return link_regexp.exec(message)
 }
@@ -115,88 +115,127 @@ const Connection = async () => {
         return await sock.sendMessage(jid, msg)
     }
 
-    app.post('/send-text', [
+    const SendText = async (jid, msg) => {
+        if (LinkCheck(msg)){
+            const data_img = await getLinkPreview(msg)
+            const image = await axios.get(data_img.images[0], {responseType: 'arraybuffer'})
+            const forms = {
+                forward: {
+                    key: { fromMe: true },
+                    message: {
+                        extendedTextMessage: {
+                            text: msg,
+                            matchedText: LinkCheck(msg)[0],
+                            canonicalUrl: data_img.url,
+                            title: data_img.title,
+                            description: data_img.description,
+                            jpegThumbnail: Buffer.from(image.data, 'binary').toString('base64') //readFileSync('./assets/python.png')
+                        }
+                    }
+                }
+            }
+            return await SendMessage(jid, forms)
+        }
+        return await SendMessage(jid, {text: msg})
+    }
+
+    app.post(
+        '/send-text', 
         body('number').notEmpty(),
         body('message').notEmpty(),
-    ], async (req, res) => {
-        const errors = validationResult(req).formatWith(({
-            msg
-        }) => {
-            return msg;
-        });
-        if (!errors.isEmpty()) {
-            return res.status(422).json({
-                status: false,
-                message: errors.mapped()
-            });
-        }
+        async (req, res) => {
+            const errors = validationResult(req).formatWith(({ msg }) => { return msg })
+            if (!errors.isEmpty()) {
+                return res.status(422).json({
+                    status: false,
+                    message: errors.mapped()
+                });
+            }
+            const number = req.body.number.toString();
+            const numberDDI = number.substr(0, 2);
+            const numberDDD = number.substr(2, 2);
+            const numberUser = number.substr(-8, 8);
+            const message = req.body.message;
+            console.log(number)
 
-        const number = req.body.number;
-        const numberDDI = number.substr(0, 2);
-        const numberDDD = number.substr(2, 2);
-        const numberUser = number.substr(-8, 8);
-        const message = req.body.message;
-
-        if (numberDDI !== "55") {
-            const jid = number + "@c.us";
-            SendMessage(jid, { text: message })
-                .then(result => {
-                    console.log(`RESULT send-text: ${result}`)
-                    res.status(200).json({
-                        status: true,
-                        message: 'Mensagem enviada',
-                        response: result
-                    });
-                })
-                    .catch(err => {
-                        console.log(`ERROR send-text: ${err}`)
-                        res.status(500).json({
-                            status: false,
-                            message: 'Mensagem não enviada',
-                            response: err.text
+            if (numberDDI !== "55") {
+                if(parseInt(number) > 13){
+                    const jid = `${number}@g.us`
+                    SendText(jid, message)
+                    .then(result => {
+                        console.log(`RESULT send-text: ${result}`)
+                        res.status(200).json({
+                            status: true,
+                            message: 'Mensagem enviada',
+                            response: result
                         });
-                    })
-        }
-        else if (numberDDI === "55" && parseInt(numberDDD) <= 30){
-            const jid = "55" + numberDDD + "9" + numberUser + "@c.us";
-            SendMessage(jid, { text: message })
-                .then(result => {
-                    console.log(`RESULT send-text: ${result}`)
-                    res.status(200).json({
-                        status: true,
-                        message: 'Mensagem enviada',
-                        response: result
-                    });
-                })
-                    .catch(err => {
-                        console.log(`ERROR send-text: ${err}`)
-                        res.status(500).json({
-                            status: false,
-                            message: 'Mensagem não enviada',
-                            response: err.text
+                    }).catch(err => {
+                            console.log(`ERROR send-text: ${err}`)
+                            res.status(500).json({
+                                status: false,
+                                message: 'Mensagem não enviada',
+                                response: err.text
+                            });
+                        })
+                }
+                else {
+                    const jid = `${number}@c.us`
+                    SendText(jid, message)
+                        .then(result => {
+                            console.log(`RESULT send-text: ${result}`)
+                            res.status(200).json({
+                                status: true,
+                                message: 'Mensagem enviada',
+                                response: result
+                            });
+                        }).catch(err => {
+                                console.log(`ERROR send-text: ${err}`)
+                                res.status(500).json({
+                                    status: false,
+                                    message: 'Mensagem não enviada',
+                                    response: err.text
+                                });
+                            })
+                }
+            }
+            else if (numberDDI === "55" && parseInt(numberDDD) <= 30){
+                const jid = `55${numberDDD}9${numberUser}@c.us`
+                SendText(jid, message)
+                    .then(result => {
+                        console.log(`RESULT send-text: ${result}`)
+                        res.status(200).json({
+                            status: true,
+                            message: 'Mensagem enviada',
+                            response: result
                         });
-                    })
-        }
-        else if(numberDDI === "55" && parseInt(numberDDD) > 30){
-            const jid = "55" + numberDDD + numberUser + "@c.us";
-            SendMessage(jid, { text: message })
-                .then(result => {
-                    console.log(`RESULT send-text: ${result}`)
-                    res.status(200).json({
-                        status: true,
-                        message: 'Mensagem enviada',
-                        response: result
-                    });
-                })
-                    .catch(err => {
-                        console.log(`ERROR send-text: ${err}`)
-                        res.status(500).json({
-                            status: false,
-                            message: 'Mensagem não enviada',
-                            response: err.text
+                    }).catch(err => {
+                            console.log(`ERROR send-text: ${err}`)
+                            res.status(500).json({
+                                status: false,
+                                message: 'Mensagem não enviada',
+                                response: err.text
+                            });
+                        })
+            }
+            else if(numberDDI === "55" && parseInt(numberDDD) > 30){
+                const jid = `55${numberDDD}${numberUser}@c.us`
+                SendText(jid, message)
+                    .then(result => {
+                        console.log(`RESULT send-text: ${result}`)
+                        res.status(200).json({
+                            status: true,
+                            message: 'Mensagem enviada',
+                            response: result
                         });
-                    })
-        }
+                    }).catch(err => {
+                            console.log(`ERROR send-text: ${err}`)
+                            res.status(500).json({
+                                status: false,
+                                message: 'Mensagem não enviada',
+                                response: err.text
+                            });
+                        })
+            }
     });
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
@@ -209,12 +248,12 @@ const Connection = async () => {
         // console.log(`participant =========== ${msg.key.participant}`)
         if(msg.message.templateButtonReplyMessage){
             if(msg.message.templateButtonReplyMessage.selectedId === 'botao-sim'){
-                SendMessage(jid, { text: `ISSO MESMO`})
+                SendText(jid, `ISSO MESMO`)
                     .then(result => console.log('RESULT: ', result))
                         .catch(err => console.log('ERROR: ', err))
             }
             else if(msg.message.templateButtonReplyMessage.selectedId === 'botao-nao'){
-                SendMessage(jid, { text: `MEU PAU`})
+                SendText(jid, `MEU PAU`)
                     .then(result => console.log('RESULT: ', result))
                         .catch(err => console.log('ERROR: ', err))
             }
@@ -227,6 +266,7 @@ const Connection = async () => {
 
         }
         else if(GroupCheck(jid)){
+            console.log(`JID: ${jid}`)
             if(msg.message.conversation.toLowerCase() === 'contato_teste'){
                 const vcard = 'BEGIN:VCARD\n' + 'VERSION:3.0\n'+ 'FN:AAAAAA MEU OVO\n' + 'ORG:Meu OVO;\n' + 'TEL;type=CELL;type=VOICE;waid=000000000000:+00 00000 00000\n' + 'END:VCARD'
                 const contact = { 
@@ -241,27 +281,7 @@ const Connection = async () => {
             }
             else if(msg.message.conversation.toLowerCase() === 'link_teste'){
                 const text = "qualquer coisa https://www.facebook.com"
-                const data_img = await getLinkPreview(text)
-                const image = await axios.get(data_img.images[0], {responseType: 'arraybuffer'})
-                let raw = Buffer.from(image.data, 'binary').toString('base64')
-
-                const link_text = {
-                    forward: {
-                        key: { fromMe: true },
-                        message: {
-                            extendedTextMessage: {
-                                text: text,
-                                matchedText: LinkMatch(text)[0],
-                                canonicalUrl: data_img.url,
-                                title: data_img.title,
-                                description: data_img.description,
-                                jpegThumbnail: raw //readFileSync('./assets/python.png')
-                            }
-                        }
-                    }
-                }
-                // console.log(JSON.stringify(link_text))
-                SendMessage(jid, link_text)
+                SendText(jid, text)
                     .then(result => console.log('RESULT: ', result))
                         .catch(err => console.log('ERROR: ', err))
             }
